@@ -279,10 +279,11 @@ def adaptive_beam_width(num_books):
         return 3
 
 
-def beam_search(books, all_candidates_by_isbn, strategy, beam_width=None):
+def beam_search(books, all_candidates_by_book, strategy, beam_width=None):
     """
     Beam Search 主算法。
     每一步为一本书选商品，保留 beam_width 个最优部分方案。
+    all_candidates_by_book 按 books 中的记录索引保存候选，避免 ISBN 或书名重复时覆盖。
     复杂度 O(N * M * beam_width)，而非 O(M^N)。
     """
     num_books = len(books)
@@ -296,10 +297,8 @@ def beam_search(books, all_candidates_by_isbn, strategy, beam_width=None):
         isbn = book.get('isbn', '')
         title = book.get('book', book.get('title', f'Book-{i}'))
 
-        # 获取这本书的候选商品
-        raw_candidates = all_candidates_by_isbn.get(isbn, [])
-        if not raw_candidates:
-            raw_candidates = all_candidates_by_isbn.get(title, [])
+        # 按教材记录获取候选；ISBN 和书名均不能保证唯一。
+        raw_candidates = all_candidates_by_book.get(i, [])
 
         # 去重 + 品相过滤 + 预剪枝
         deduped, _ = deduplicate_candidates(raw_candidates)
@@ -349,13 +348,12 @@ def run_optimizer(books_data, output_strategy=None):
     books = []
     all_candidates = {}
 
-    for book_data in books_data:
-        book_key = book_data.get('isbn', book_data.get('book', book_data.get('title', '')))
+    for i, book_data in enumerate(books_data):
         books.append({
             'book': book_data.get('book', book_data.get('title', '')),
             'isbn': book_data.get('isbn', ''),
         })
-        all_candidates[book_data.get('isbn', book_data.get('book', ''))] = book_data.get('candidates', [])
+        all_candidates[i] = book_data.get('candidates', [])
 
     # 汇总统计
     total_raw = sum(len(book_data.get('candidates', [])) for book_data in books_data)
@@ -377,9 +375,8 @@ def run_optimizer(books_data, output_strategy=None):
         else:
             # 诊断失败原因
             reasons = []
-            for book in books:
-                isbn = book.get('isbn', book.get('book', ''))
-                candidates = all_candidates.get(isbn, [])
+            for i, book in enumerate(books):
+                candidates = all_candidates.get(i, [])
                 filtered = apply_condition_filter(candidates, strategy)
                 if len(candidates) > 0 and len(filtered) == 0:
                     reasons.append(f'{book["book"]}: 无满足品相要求的候选 (共{len(candidates)}个候选)')
